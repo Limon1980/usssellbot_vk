@@ -112,8 +112,17 @@ class AdminManager {
      * Публикация объявления в канал
      */
     public function publishToChannel($adId, $vkHelper, $channelPeerId) {
+        error_log("[AdminManager] publishToChannel: adId={$adId}, channelPeerId={$channelPeerId}");
+
+        // Проверка channelPeerId
+        if (empty($channelPeerId) || $channelPeerId === '2000000001') {
+            error_log("[AdminManager] ERROR: VK_CHANNEL_PEER_ID not set or is default value");
+            return false;
+        }
+
         $ad = $this->getAdWithMedia($adId);
         if (!$ad) {
+            error_log("[AdminManager] ERROR: Ad #{$adId} not found");
             return false;
         }
 
@@ -139,22 +148,31 @@ class AdminManager {
             }
         }
 
+        error_log("[AdminManager] Publishing to channel: text=" . substr($adText, 0, 100) . ", media=" . count($mediaAttachments));
+
         // Отправляем в канал
-        if (!empty($mediaAttachments)) {
-            $vkHelper->sendMessage($channelPeerId, $adText, [
-                'attachment' => implode(',', $mediaAttachments)
-            ]);
-        } else {
-            $vkHelper->sendMessage($channelPeerId, $adText);
+        try {
+            if (!empty($mediaAttachments)) {
+                $result = $vkHelper->sendMessage($channelPeerId, $adText, [
+                    'attachment' => implode(',', $mediaAttachments)
+                ]);
+            } else {
+                $result = $vkHelper->sendMessage($channelPeerId, $adText);
+            }
+
+            error_log("[AdminManager] Publish result: " . json_encode($result));
+
+            // Обновляем статус объявления
+            $this->markAsPublished($adId);
+
+            // Уведомляем пользователя
+            $vkHelper->sendMessage($ad['user_id'], "Ваше объявление опубликовано!");
+
+            return true;
+        } catch (Exception $e) {
+            error_log("[AdminManager] ERROR: " . $e->getMessage());
+            return false;
         }
-
-        // Обновляем статус объявления
-        $this->markAsPublished($adId);
-
-        // Уведомляем пользователя
-        $vkHelper->sendMessage($ad['user_id'], "Ваше объявление опубликовано!");
-
-        return true;
     }
 
     /**
@@ -287,15 +305,29 @@ class AdminManager {
      */
     public function handleAdminCommand($text, $vkHelper) {
         // Команда /post{id}
-        if (preg_match('/^\/post(\d+)$/', $text, $matches)) {
+        if (preg_match('/\/post(\d+)$/', $text, $matches)) {
             $adId = $matches[1];
-            return $this->publishToChannel($adId, $vkHelper, VK_CHANNEL_PEER_ID);
+            error_log("[AdminManager] Publishing ad #{$adId} to channel");
+            $result = $this->publishToChannel($adId, $vkHelper, VK_CHANNEL_PEER_ID);
+            if ($result) {
+                $vkHelper->sendMessage($this->adminUserId, "✅ Объявление #{$adId} опубликовано в канал!");
+            } else {
+                $vkHelper->sendMessage($this->adminUserId, "❌ Ошибка публикации объявления #{$adId}");
+            }
+            return true;
         }
 
         // Команда /delete{id}
-        if (preg_match('/^\/delete(\d+)$/', $text, $matches)) {
+        if (preg_match('/\/delete(\d+)$/', $text, $matches)) {
             $adId = $matches[1];
-            return $this->deleteAd($adId, $vkHelper);
+            error_log("[AdminManager] Deleting ad #{$adId}");
+            $result = $this->deleteAd($adId, $vkHelper);
+            if ($result) {
+                $vkHelper->sendMessage($this->adminUserId, "✅ Объявление #{$adId} удалено!");
+            } else {
+                $vkHelper->sendMessage($this->adminUserId, "❌ Ошибка удаления объявления #{$adId}");
+            }
+            return true;
         }
 
         return false;

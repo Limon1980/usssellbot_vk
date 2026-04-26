@@ -88,7 +88,7 @@ function handleNewMessage($object) {
     // Проверка, что это сообщение админу
     if ($userId == VK_ADMIN_USER_ID) {
         // Обработка админских команд
-        if (preg_match('/^\/(post|delete)(\d+)$/', $text, $matches)) {
+        if (preg_match('/\/(post|delete)(\d+)$/', $text, $matches)) {
             $adminManager->handleAdminCommand($text, $vkHelper);
             return;
         }
