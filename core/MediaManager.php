@@ -27,16 +27,17 @@ class MediaManager {
     /**
      * Сохранение медиа для объявления VK
      */
-    public function saveMedia($adId, $mediaId, $type = 'photo') {
+    public function saveMedia($adId, $mediaId, $type = 'photo', $photoUrl = null) {
         try {
             $stmt = $this->db->prepare(
-                "INSERT INTO vk_ad_media (ad_id, media_id, type, created_at)
-                 VALUES (:ad_id, :media_id, :type, NOW())"
+                "INSERT INTO vk_ad_media (ad_id, media_id, type, photo_url, created_at)
+                 VALUES (:ad_id, :media_id, :type, :photo_url, NOW())"
             );
             $stmt->execute([
                 ':ad_id' => $adId,
                 ':media_id' => $mediaId,
-                ':type' => $type
+                ':type' => $type,
+                ':photo_url' => $photoUrl
             ]);
             return $this->db->lastInsertId();
         } catch (PDOException $e) {
@@ -109,19 +110,111 @@ class MediaManager {
     }
 
     /**
-     * Проверка наличия медиа определённого типа
+     * Загрузка фото в группу VK и получение attachment
      */
-    public function hasMedia($adId, $type = 'photo') {
+    public function uploadPhotoToGroup($photoUrl) {
         try {
-            $stmt = $this->db->prepare(
-                "SELECT COUNT(*) as count FROM vk_ad_media WHERE ad_id = :ad_id AND type = :type"
-            );
-            $stmt->execute([':ad_id' => $adId, ':type' => $type]);
-            $result = $stmt->fetch();
-            return ($result['count'] ?? 0) > 0;
-        } catch (PDOException $e) {
-            error_log("[MediaManager] hasMedia Error: " . $e->getMessage());
-            return false;
+            error_log("[MediaManager] uploadPhotoToGroup: photoUrl=" . substr($photoUrl, 0, 100));
+
+            // 1. Получаем upload сервер
+            $uploadServer = $this->vkApi('photos.getWallUploadServer', [
+                'group_id' => VK_GROUP_ID
+            ]);
+
+            if (!isset($uploadServer['upload_url'])) {
+                error_log("[MediaManager] ERROR: No upload_url in response");
+                throw new Exception('Не удалось получить upload server');
+            }
+
+            // 2. Скачиваем фото во временный файл
+            $tempFile = sys_get_temp_dir() . '/vk_' . uniqid() . '.jpg';
+            $imageData = file_get_contents($photoUrl);
+
+            if ($imageData === false) {
+                error_log("[MediaManager] ERROR: Failed to download photo");
+                throw new Exception('Не удалось скачать фото');
+            }
+
+            file_put_contents($tempFile, $imageData);
+
+            // 3. Загружаем файл в VK
+            $ch = curl_init($uploadServer['upload_url']);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, [
+                'photo' => new CURLFile($tempFile)
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+            $uploadResponse = curl_exec($ch);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($error) {
+                error_log("[MediaManager] CURL Error: " . $error);
+                throw new Exception('Ошибка загрузки фото: ' . $error);
+            }
+
+            $uploadData = json_decode($uploadResponse, true);
+
+            if (!isset($uploadData['photo'])) {
+                error_log("[MediaManager] ERROR: No photo in upload response: " . json_encode($uploadData));
+                throw new Exception('Ошибка загрузки фото');
+            }
+
+            // 4. Сохраняем фото
+            $saveResponse = $this->vkApi('photos.saveWallPhoto', [
+                'group_id' => VK_GROUP_ID,
+                'photo' => $uploadData['photo'],
+                'server' => $uploadData['server'],
+                'hash' => $uploadData['hash']
+            ]);
+
+            if (!isset($saveResponse[0]['id'])) {
+                error_log("[MediaManager] ERROR: No id in save response: " . json_encode($saveResponse));
+                throw new Exception('Ошибка сохранения фото');
+            }
+
+            $photo = $saveResponse[0];
+
+            // 5. Удаляем временный файл
+            unlink($tempFile);
+
+            // 6. Возвращаем attachment
+            $attachment = 'photo' . $photo['owner_id'] . '_' . $photo['id'];
+            error_log("[MediaManager] SUCCESS: attachment=" . $attachment);
+
+            return $attachment;
+
+        } catch (Exception $e) {
+            error_log("[MediaManager] uploadPhotoToGroup Error: " . $e->getMessage());
+            return null;
         }
+    }
+
+    /**
+     * Вызов API VK
+     */
+    private function vkApi($method, $params = []) {
+        $params['access_token'] = VK_ACCESS_TOKEN;
+        $params['v'] = VK_API_VERSION;
+
+        $url = "https://api.vk.com/method/" . $method;
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $data = json_decode($response, true);
+
+        if (isset($data['error'])) {
+            error_log("[VK API] Error: " . json_encode($data['error']));
+            return null;
+        }
+
+        return $data['response'] ?? null;
     }
 }

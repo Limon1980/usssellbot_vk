@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS vk_ad_media (
     ad_id BIGINT UNSIGNED NOT NULL,
     media_id VARCHAR(255) NOT NULL COMMENT 'VK media_id (photoXXX_XXX)',
     type ENUM('photo', 'video', 'document') NOT NULL DEFAULT 'photo',
+    photo_url TEXT NULL COMMENT 'URL фото для перезаливки',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_ad_id (ad_id),
     INDEX idx_type (type)

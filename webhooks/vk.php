@@ -94,6 +94,14 @@ function handleNewMessage($object) {
         }
     }
 
+    // Проверка, что это не уведомление о новом сообщении в сообществе
+    // Если peer_id != userId, значит это сообщение в сообществе, а не личное сообщение
+    if ($peerId != $userId) {
+        // Это сообщение в сообществе - игнорируем уведомления
+        error_log("[VK Webhook] Ignoring community message notification: userId={$userId}, peerId={$peerId}");
+        return;
+    }
+
     // Получаем информацию о пользователе
     $userInfo = $vkHelper->getUserInfo($userId);
     $username = $userInfo[0]['screen_name'] ?? '';
@@ -233,7 +241,7 @@ function handleAddingPhotoState($userId, $text, $attachments, $state, $stateMana
 
     // Кнопка "Добавить фото"
     if ($text === 'Добавить фото') {
-        $vkHelper->sendMessage($userId, "Прикрепите фото через скрепку.");
+        $vkHelper->sendMessage($userId, "Прикрепите фото через скрепку (можно несколько сразу).");
         return;
     }
 
@@ -248,17 +256,28 @@ function handleAddingPhotoState($userId, $text, $attachments, $state, $stateMana
         return;
     }
 
-    // Загрузка фото
+    // Загрузка фото (обрабатываем все фото сразу)
     $photoCount = 0;
     foreach ($attachments as $attachment) {
         if ($attachment['type'] === 'photo') {
             $photo = $attachment['photo'];
-            $largestPhoto = end($photo['sizes']);
+            $sizes = $photo['sizes'];
+            $largestPhoto = end($sizes);
+            $photoUrl = $largestPhoto['url'];
 
-            // Сохраняем медиа
-            $mediaId = "photo{$photo['owner_id']}_{$photo['id']}";
-            $mediaManager->saveMedia($adId, $mediaId, 'photo');
-            $photoCount++;
+            error_log("[VK Webhook] Processing photo: url=" . substr($photoUrl, 0, 100));
+
+            // Перезаливаем фото в группу
+            $attachmentId = $mediaManager->uploadPhotoToGroup($photoUrl);
+
+            if ($attachmentId) {
+                // Сохраняем в БД с URL
+                $mediaManager->saveMedia($adId, $attachmentId, 'photo', $photoUrl);
+                $photoCount++;
+                error_log("[VK Webhook] Photo uploaded successfully: " . $attachmentId);
+            } else {
+                error_log("[VK Webhook] ERROR: Failed to upload photo to group");
+            }
         }
     }
 
