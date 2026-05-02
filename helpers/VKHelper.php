@@ -127,23 +127,22 @@ class VKHelper {
     }
 
     /**
-     * Получение URL для загрузки фото в сообщения
+     * Получение URL для загрузки фото на стену
      */
-    public function getMessagesUploadServer($peerId) {
-        return $this->call('messages.getMessagesUploadServer', [
-            'peer_id' => $peerId,
-            'type' => 'photo'
+    public function getWallUploadServer($groupId) {
+        return $this->call('photos.getWallUploadServer', [
+            'group_id' => $groupId
         ]);
     }
 
     /**
-     * Загрузка фото на сервер VK
+     * Загрузка фото на сервер VK для стены
      */
-    public function uploadPhoto($uploadUrl, $photoUrl) {
+    public function uploadWallPhoto($uploadUrl, $photoPath) {
         $ch = curl_init($uploadUrl);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, [
-            'file' => new CURLFile($photoUrl)
+            'photo' => new CURLFile($photoPath)
         ]);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
@@ -155,14 +154,33 @@ class VKHelper {
     }
 
     /**
-     * Сохранение фото для сообщений
+     * Сохранение фото для стены
      */
-    public function saveMessagesPhoto($uploadedPhoto) {
-        return $this->call('photos.saveMessagesPhoto', [
+    public function saveWallPhoto($uploadedPhoto, $groupId) {
+        return $this->call('photos.saveWallPhoto', [
             'photo' => $uploadedPhoto['photo'],
             'server' => $uploadedPhoto['server'],
-            'hash' => $uploadedPhoto['hash']
+            'hash' => $uploadedPhoto['hash'],
+            'group_id' => $groupId
         ]);
+    }
+
+    /**
+     * Публикация поста на стену
+     */
+    public function wallPost($groupId, $text, $attachments = []) {
+        $params = [
+            'owner_id' => -$groupId,
+            'message' => $text,
+            'from_group' => 1,
+            'signed' => 0
+        ];
+
+        if (!empty($attachments)) {
+            $params['attachments'] = implode(',', $attachments);
+        }
+
+        return $this->call('wall.post', $params);
     }
 
     /**

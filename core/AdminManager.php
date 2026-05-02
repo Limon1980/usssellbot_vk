@@ -109,16 +109,10 @@ class AdminManager {
     }
 
     /**
-     * Публикация объявления в канал
+     * Публикация объявления на стену сообщества
      */
-    public function publishToChannel($adId, $vkHelper, $channelPeerId) {
-        error_log("[AdminManager] publishToChannel: adId={$adId}, channelPeerId={$channelPeerId}");
-
-        // Проверка channelPeerId
-        if (empty($channelPeerId) || $channelPeerId === '2000000001') {
-            error_log("[AdminManager] ERROR: VK_CHANNEL_PEER_ID not set or is default value");
-            return false;
-        }
+    public function publishToWall($adId, $vkHelper, $groupId) {
+        error_log("[AdminManager] publishToWall: adId={$adId}, groupId={$groupId}");
 
         $ad = $this->getAdWithMedia($adId);
         if (!$ad) {
@@ -140,33 +134,29 @@ class AdminManager {
             $adText .= "\n\n<i>Реклама</i>";
         }
 
-        // Получаем медиа
-        $mediaAttachments = [];
+        // Получаем медиа и загружаем на стену
+        $wallAttachments = [];
         if (!empty($ad['media'])) {
             foreach ($ad['media'] as $media) {
-                $mediaAttachments[] = $media['media_id'];
+                // media_id уже в формате photoXXX_XXX, но нужно загрузить на стену
+                // Для MVP используем существующий media_id
+                $wallAttachments[] = $media['media_id'];
             }
         }
 
-        error_log("[AdminManager] Publishing to channel: text=" . substr($adText, 0, 100) . ", media=" . count($mediaAttachments));
+        error_log("[AdminManager] Publishing to wall: text=" . substr($adText, 0, 100) . ", media=" . count($wallAttachments));
 
-        // Отправляем в канал
+        // Публикуем на стену
         try {
-            if (!empty($mediaAttachments)) {
-                $result = $vkHelper->sendMessage($channelPeerId, $adText, [
-                    'attachment' => implode(',', $mediaAttachments)
-                ]);
-            } else {
-                $result = $vkHelper->sendMessage($channelPeerId, $adText);
-            }
+            $result = $vkHelper->wallPost($groupId, $adText, $wallAttachments);
 
-            error_log("[AdminManager] Publish result: " . json_encode($result));
+            error_log("[AdminManager] Wall post result: " . json_encode($result));
 
             // Обновляем статус объявления
             $this->markAsPublished($adId);
 
             // Уведомляем пользователя
-            $vkHelper->sendMessage($ad['user_id'], "Ваше объявление опубликовано!");
+            $vkHelper->sendMessage($ad['user_id'], "Ваше объявление опубликовано на стене сообщества!");
 
             return true;
         } catch (Exception $e) {
@@ -307,10 +297,10 @@ class AdminManager {
         // Команда /post{id}
         if (preg_match('/\/post(\d+)$/', $text, $matches)) {
             $adId = $matches[1];
-            error_log("[AdminManager] Publishing ad #{$adId} to channel");
-            $result = $this->publishToChannel($adId, $vkHelper, VK_CHANNEL_PEER_ID);
+            error_log("[AdminManager] Publishing ad #{$adId} to wall");
+            $result = $this->publishToWall($adId, $vkHelper, VK_GROUP_ID);
             if ($result) {
-                $vkHelper->sendMessage($this->adminUserId, "✅ Объявление #{$adId} опубликовано в канал!");
+                $vkHelper->sendMessage($this->adminUserId, "✅ Объявление #{$adId} опубликовано на стене!");
             } else {
                 $vkHelper->sendMessage($this->adminUserId, "❌ Ошибка публикации объявления #{$adId}");
             }
