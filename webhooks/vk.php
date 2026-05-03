@@ -125,7 +125,7 @@ function handleNewMessage($object) {
             break;
 
         case StateManager::STATE_CHATTING_WITH_ADMIN:
-            handleChattingWithAdminState($userId, $text, $state, $stateManager, $vkHelper);
+            handleChattingWithAdminState($userId, $text, $state, $stateManager, $vkHelper, $username);
             break;
 
         default:
@@ -163,14 +163,25 @@ function handleIdleState($userId, $text, $vkHelper, $stateManager, $userManager)
         }
 
         $stateManager->transition($userId, StateManager::STATE_CREATING_TEXT);
-
         $vkHelper->sendMessage($userId, "Шаг 1: Напишите текст объявления.\n\nПример:\nПродается кровать деревянная\nЦена 1000 руб\nТел 89991234567");
         return;
     }
 
+    // Вход в режим чата с админом
     if ($text === 'Сообщение админу') {
         $stateManager->transition($userId, StateManager::STATE_CHATTING_WITH_ADMIN);
-        $vkHelper->sendMessage($userId, "Напишите ваше сообщение админу.\n\nАдмин ответит вам в ближайшее время.");
+        
+        // Создаем временную кнопку отмены
+        $cancelKeyboard = [
+            'one_time' => false,
+            'buttons' => [[
+                ['action' => ['type' => 'text', 'label' => 'Отмена'], 'color' => 'negative']
+            ]]
+        ];
+
+        $vkHelper->sendMessage($userId, "Режим связи с админом.\n\nНапишите ваше сообщение в следующем ответе, и админ его получит.\n\nДля выхода нажмите «Отмена».", [
+            'keyboard' => $cancelKeyboard
+        ]);
         return;
     }
 
@@ -424,18 +435,29 @@ function handleWaitingPaymentState($userId, $text, $state, $stateManager, $adMan
 }
 
 /**
- * Состояние CHATTING_WITH_ADMIN
+ * Состояние CHATTING_WITH_ADMIN (Пересылка сообщения админу)
  */
-function handleChattingWithAdminState($userId, $text, $state, $stateManager, $vkHelper) {
-    if ($text === 'Отмена' || $text === '/stop') {
+function handleChattingWithAdminState($userId, $text, $state, $stateManager, $vkHelper, $username) {
+    // Если пользователь хочет выйти
+    if ($text === 'Отмена' || $text === '/stop' || $text === '/start' || $text === 'Начать') {
         $stateManager->reset($userId);
-        $vkHelper->sendMessage($userId, "Диалог завершён. Напишите /start", [
+        $vkHelper->sendMessage($userId, "Диалог завершён. Возврат в меню.", [
             'keyboard' => $vkHelper->getStartKeyboard()
         ]);
         return;
     }
 
-    $vkHelper->sendMessage($userId, "Сообщение отправлено админу! (TODO)");
+    // 1. Формируем сообщение для админа
+    // Используем [id123|Имя], чтобы в VK ссылка была кликабельной
+    $adminMessage = "📩 НОВОЕ СООБЩЕНИЕ АДМИНУ\n\n";
+    $adminMessage .= "От: [id{$userId}|{$username}]\n";
+    $adminMessage .= "Текст: {$text}";
+
+    // 2. Отправляем сообщение лично админу (VK_ADMIN_USER_ID)
+    $vkHelper->sendMessage(VK_ADMIN_USER_ID, $adminMessage);
+
+    // 3. Подтверждаем пользователю
+    $vkHelper->sendMessage($userId, "✅ Ваше сообщение отправлено админу лично. Ожидайте ответа.\n\nВы можете отправить ещё сообщение или нажать «Отмена».");
 }
 
 /**

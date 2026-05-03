@@ -188,7 +188,7 @@ class VKHelper {
      */
     public function getStartKeyboard() {
         return [
-            'one_time' => false,
+            'one_time' => true,
             'buttons' => [
                 [
                     [
@@ -215,7 +215,7 @@ class VKHelper {
      */
     public function getAddPhotoKeyboard() {
 		return [
-			'one_time' => false,
+			'one_time' => true,
 			'buttons' => [
 				[
 					[
@@ -248,7 +248,7 @@ class VKHelper {
 	 */
 	public function getPublishKeyboard() {
 		return [
-			'one_time' => false,
+			'one_time' => true,
 			'buttons' => [
 				[
 					[
@@ -312,7 +312,7 @@ class VKHelper {
      */
     public function getEmptyKeyboard() {
         return [
-            'one_time' => false,
+            'one_time' => true,
             'buttons' => []
         ];
     }
