@@ -1,6 +1,5 @@
 <?php
 // ussselbot_vk/core/AdminManager.php
-// Менеджер для работы с админом
 
 require_once __DIR__ . '/../config.php';
 
@@ -26,26 +25,15 @@ class AdminManager {
         }
     }
 
-    /**
-     * Отправка объявления админу для модерации
-     */
     public function sendAdToModeration($adId, $vkHelper) {
         $ad = $this->getAdWithMedia($adId);
-        if (!$ad) {
-            return false;
+        if (!$ad) return false;
+
+        $adText = $ad['text'];
+        if (!empty($ad['username']) && strpos($adText, '@') === false) {
+            $adText .= "\n\n@" . $ad['username'];
         }
 
-        $text = $ad['text'];
-        $username = $ad['username'] ? '@' . $ad['username'] : '';
-        $userId = $ad['user_id'];
-
-        // Формируем текст объявления
-        $adText = $text;
-        if (!empty($username) && strpos($text, '@') === false) {
-            $adText .= "\n\n" . $username;
-        }
-
-        // Получаем медиа
         $mediaAttachments = [];
         if (!empty($ad['media'])) {
             foreach ($ad['media'] as $media) {
@@ -53,7 +41,6 @@ class AdminManager {
             }
         }
 
-        // Отправляем объявление админу
         if (!empty($mediaAttachments)) {
             $vkHelper->sendMessage($this->adminUserId, $adText, [
                 'attachment' => implode(',', $mediaAttachments)
@@ -62,55 +49,37 @@ class AdminManager {
             $vkHelper->sendMessage($this->adminUserId, $adText);
         }
 
-        // Отправляем информацию о пользователе
-        $userInfo = "Объявление от пользователя ID: {$userId}";
-        if (!empty($username)) {
-            $userInfo .= " ({$username})";
+        $userInfo = "Объявление #{$adId} от пользователя ID: {$ad['user_id']}";
+        if (!empty($ad['username'])) {
+            $userInfo .= " (@{$ad['username']})";
         }
         $vkHelper->sendMessage($this->adminUserId, $userInfo);
 
-        // Отправляем кнопки модерации
         $this->sendModerationButtons($adId, $vkHelper);
-
         return true;
     }
 
-    /**
-     * Отправка кнопок модерации
-     */
     public function sendModerationButtons($adId, $vkHelper) {
         $buttons = [
             [
                 [
-                    'action' => [
-                        'type' => 'text',
-                        'label' => "Опубликовать /post{$adId}"
-                    ],
-                    'color' => 'positive'
+                    'action' => ['type' => 'text', 'label' => "Опубликовать /post{$adId}"],
+                    'color'  => 'positive'
                 ]
             ],
             [
                 [
-                    'action' => [
-                        'type' => 'text',
-                        'label' => "Удалить /delete{$adId}"
-                    ],
-                    'color' => 'negative'
+                    'action' => ['type' => 'text', 'label' => "Удалить /delete{$adId}"],
+                    'color'  => 'negative'
                 ]
             ]
         ];
 
         $vkHelper->sendMessage($this->adminUserId, "Выберите действие:", [
-            'keyboard' => [
-                'one_time' => false,
-                'buttons' => $buttons
-            ]
+            'keyboard' => ['one_time' => false, 'buttons' => $buttons]
         ]);
     }
 
-    /**
-     * Публикация объявления на стену сообщества
-     */
     public function publishToWall($adId, $vkHelper, $groupId) {
         error_log("[AdminManager] publishToWall: adId={$adId}, groupId={$groupId}");
 
@@ -120,99 +89,76 @@ class AdminManager {
             return false;
         }
 
-        $text = $ad['text'];
-        $username = $ad['username'] ? '@' . $ad['username'] : '';
-
-        // Формируем текст объявления
-        $adText = $text;
-        if (!empty($username) && strpos($text, '@') === false) {
-            $adText .= "\n\n" . $username;
+        $adText = $ad['text'];
+        if (!empty($ad['username']) && strpos($adText, '@') === false) {
+            $adText .= "\n\n@" . $ad['username'];
         }
 
-        // Добавляем метку рекламы если платное
-        if ($ad['pay_type'] === 'paid') {
-            $adText .= "\n\n<i>Реклама</i>";
-        }
-
-        // Получаем медиа и загружаем на стену
+        // Собираем вложения из БД
         $wallAttachments = [];
         if (!empty($ad['media'])) {
             foreach ($ad['media'] as $media) {
-                // media_id уже в формате photoXXX_XXX, но нужно загрузить на стену
-                // Для MVP используем существующий media_id
-                $wallAttachments[] = $media['media_id'];
+                $mediaId = $media['media_id'];
+                // Нормализуем: photo-238306571_123 → photo-238306571_123 (уже правильно)
+                // Убеждаемся что формат корректный
+                if (strpos($mediaId, 'photo') === 0) {
+                    $wallAttachments[] = $mediaId;
+                    error_log("[AdminManager] Adding attachment: {$mediaId}");
+                }
             }
         }
 
-        error_log("[AdminManager] Publishing to wall: text=" . substr($adText, 0, 100) . ", media=" . count($wallAttachments));
+        error_log("[AdminManager] Publishing: text=" . mb_substr($adText, 0, 50) . ", attachments=" . implode(',', $wallAttachments));
 
-        // Публикуем на стену
-        try {
-            $result = $vkHelper->wallPost($groupId, $adText, $wallAttachments);
+        // Параметры для wall.post
+        $params = [
+            'owner_id'   => '-' . $groupId,
+            'message'    => $adText,
+            'from_group' => 1,
+            'signed'     => 0
+        ];
 
-            error_log("[AdminManager] Wall post result: " . json_encode($result));
-
-            // Обновляем статус объявления
-            $this->markAsPublished($adId);
-
-            // Уведомляем пользователя
-            $vkHelper->sendMessage($ad['user_id'], "Ваше объявление опубликовано на стене сообщества!");
-
-            return true;
-        } catch (Exception $e) {
-            error_log("[AdminManager] ERROR: " . $e->getMessage());
-            return false;
+        if (!empty($wallAttachments)) {
+            $params['attachments'] = implode(',', $wallAttachments);
         }
+
+        error_log("[AdminManager] wall.post params: " . json_encode($params));
+
+        // Вызываем wall.post напрямую
+        $result = $this->vkApi('wall.post', $params);
+
+        error_log("[AdminManager] wall.post result: " . json_encode($result));
+
+        if (!empty($result['post_id'])) {
+            $this->markAsPublished($adId);
+            $vkHelper->sendMessage($ad['user_id'], "✅ Ваше объявление опубликовано на стене сообщества!");
+            return true;
+        }
+
+        error_log("[AdminManager] ERROR: wall.post failed");
+        return false;
     }
 
-    /**
-     * Удаление объявления админом
-     */
     public function deleteAd($adId, $vkHelper) {
         $ad = $this->getAd($adId);
-        if (!$ad) {
-            return false;
-        }
+        if (!$ad) return false;
 
-        // Удаляем объявление
         $this->deleteAdFromDB($adId);
-
-        // Уведомляем пользователя
         $vkHelper->sendMessage($ad['user_id'], "Ваше объявление удалено администратором.");
-
-        // Уведомляем админа
         $vkHelper->sendMessage($this->adminUserId, "Объявление #{$adId} удалено.");
-
         return true;
     }
 
-    /**
-     * Получение объявления с медиа
-     */
     private function getAdWithMedia($adId) {
         try {
-            $stmt = $this->db->prepare(
-                "SELECT a.*, GROUP_CONCAT(m.media_id) as media_ids
-                 FROM vk_ads a
-                 LEFT JOIN vk_ad_media m ON a.id = m.ad_id
-                 WHERE a.id = :id
-                 GROUP BY a.id"
-            );
+            $stmt = $this->db->prepare("SELECT * FROM vk_ads WHERE id = :id");
             $stmt->execute([':id' => $adId]);
             $result = $stmt->fetch();
+            if (!$result) return null;
 
-            if (!$result) {
-                return null;
-            }
-
-            // Получаем медиа отдельно
-            $stmt = $this->db->prepare(
-                "SELECT * FROM vk_ad_media WHERE ad_id = :ad_id ORDER BY id"
-            );
+            $stmt = $this->db->prepare("SELECT * FROM vk_ad_media WHERE ad_id = :ad_id ORDER BY id");
             $stmt->execute([':ad_id' => $adId]);
-            $media = $stmt->fetchAll();
-
-            $result['media'] = $media;
+            $result['media'] = $stmt->fetchAll();
 
             return $result;
         } catch (PDOException $e) {
@@ -221,14 +167,9 @@ class AdminManager {
         }
     }
 
-    /**
-     * Получение объявления
-     */
     private function getAd($adId) {
         try {
-            $stmt = $this->db->prepare(
-                "SELECT * FROM vk_ads WHERE id = :id"
-            );
+            $stmt = $this->db->prepare("SELECT * FROM vk_ads WHERE id = :id");
             $stmt->execute([':id' => $adId]);
             $result = $stmt->fetch();
             return $result ?: null;
@@ -238,14 +179,9 @@ class AdminManager {
         }
     }
 
-    /**
-     * Пометка как опубликованное
-     */
     private function markAsPublished($adId) {
         try {
-            $stmt = $this->db->prepare(
-                "UPDATE vk_ads SET post = 1 WHERE id = :id"
-            );
+            $stmt = $this->db->prepare("UPDATE vk_ads SET post = 1 WHERE id = :id");
             $stmt->execute([':id' => $adId]);
             return true;
         } catch (PDOException $e) {
@@ -254,35 +190,12 @@ class AdminManager {
         }
     }
 
-    /**
-     * Удаление объявления из БД
-     */
     private function deleteAdFromDB($adId) {
         try {
-            // Удаляем медиа
-            $stmt = $this->db->prepare(
-                "DELETE FROM vk_ad_media WHERE ad_id = :ad_id"
-            );
-            $stmt->execute([':ad_id' => $adId]);
-
-            // Удаляем из очереди
-            $stmt = $this->db->prepare(
-                "DELETE FROM vk_queue WHERE ad_id = :ad_id"
-            );
-            $stmt->execute([':ad_id' => $adId]);
-
-            // Удаляем сообщения админу
-            $stmt = $this->db->prepare(
-                "DELETE FROM vk_admin_messages WHERE ad_id = :ad_id"
-            );
-            $stmt->execute([':ad_id' => $adId]);
-
-            // Удаляем объявление
-            $stmt = $this->db->prepare(
-                "DELETE FROM vk_ads WHERE id = :id"
-            );
-            $stmt->execute([':id' => $adId]);
-
+            $this->db->prepare("DELETE FROM vk_ad_media WHERE ad_id = :id")->execute([':id' => $adId]);
+            $this->db->prepare("DELETE FROM vk_queue WHERE ad_id = :id")->execute([':id' => $adId]);
+            $this->db->prepare("DELETE FROM vk_admin_messages WHERE ad_id = :id")->execute([':id' => $adId]);
+            $this->db->prepare("DELETE FROM vk_ads WHERE id = :id")->execute([':id' => $adId]);
             return true;
         } catch (PDOException $e) {
             error_log("[AdminManager] deleteAdFromDB Error: " . $e->getMessage());
@@ -290,27 +203,20 @@ class AdminManager {
         }
     }
 
-    /**
-     * Обработка админских команд
-     */
     public function handleAdminCommand($text, $vkHelper) {
-        // Команда /post{id}
         if (preg_match('/\/post(\d+)$/', $text, $matches)) {
-            $adId = $matches[1];
-            error_log("[AdminManager] Publishing ad #{$adId} to wall");
+            $adId   = $matches[1];
             $result = $this->publishToWall($adId, $vkHelper, VK_GROUP_ID);
             if ($result) {
-                $vkHelper->sendMessage($this->adminUserId, "✅ Объявление #{$adId} опубликовано на стене!");
+                $vkHelper->sendMessage($this->adminUserId, "✅ Объявление #{$adId} опубликовано!");
             } else {
                 $vkHelper->sendMessage($this->adminUserId, "❌ Ошибка публикации объявления #{$adId}");
             }
             return true;
         }
 
-        // Команда /delete{id}
         if (preg_match('/\/delete(\d+)$/', $text, $matches)) {
-            $adId = $matches[1];
-            error_log("[AdminManager] Deleting ad #{$adId}");
+            $adId   = $matches[1];
             $result = $this->deleteAd($adId, $vkHelper);
             if ($result) {
                 $vkHelper->sendMessage($this->adminUserId, "✅ Объявление #{$adId} удалено!");
@@ -321,5 +227,34 @@ class AdminManager {
         }
 
         return false;
+    }
+
+    private function vkApi($method, $params = []) {
+        $params['access_token'] = VK_ACCESS_TOKEN;
+        $params['v']            = VK_API_VERSION;
+
+        $ch = curl_init("https://api.vk.com/method/" . $method);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+
+        $response  = curl_exec($ch);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError) {
+            error_log("[AdminManager] vkApi curl error [{$method}]: " . $curlError);
+            return null;
+        }
+
+        $data = json_decode($response, true);
+        if (isset($data['error'])) {
+            error_log("[AdminManager] vkApi error [{$method}]: " . json_encode($data['error']));
+            return null;
+        }
+
+        return $data['response'] ?? null;
     }
 }

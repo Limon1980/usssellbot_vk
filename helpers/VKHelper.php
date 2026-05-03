@@ -214,46 +214,68 @@ class VKHelper {
      * Получение клавиатуры добавления фото
      */
     public function getAddPhotoKeyboard() {
-        return [
-            'one_time' => false,
-            'buttons' => [
-                [
-                    [
-                        'action' => [
-                            'type' => 'text',
-                            'label' => 'Опубликовать'
-                        ],
-                        'color' => 'positive'
-                    ],
-                    [
-                        'action' => [
-                            'type' => 'text',
-                            'label' => 'Посмотреть'
-                        ],
-                        'color' => 'default'
-                    ]
-                ],
-                [
-                    [
-                        'action' => [
-                            'type' => 'text',
-                            'label' => 'Добавить фото'
-                        ],
-                        'color' => 'primary'
-                    ]
-                ],
-                [
-                    [
-                        'action' => [
-                            'type' => 'text',
-                            'label' => 'Удалить объявление'
-                        ],
-                        'color' => 'negative'
-                    ]
-                ]
-            ]
-        ];
-    }
+		return [
+			'one_time' => false,
+			'buttons' => [
+				[
+					[
+						'action' => ['type' => 'text', 'label' => 'Посмотреть'],
+						'color'  => 'default'
+					],
+					[
+						'action' => ['type' => 'text', 'label' => 'Далее без фото'],
+						'color'  => 'primary'
+					]
+				],
+				[
+					[
+						'action' => ['type' => 'text', 'label' => 'Добавить фото'],
+						'color'  => 'primary'
+					]
+				],
+				[
+					[
+						'action' => ['type' => 'text', 'label' => 'Удалить объявление'],
+						'color'  => 'negative'
+					]
+				]
+			]
+		];
+	}
+	
+	/**
+	 * Клавиатура шага PREVIEW (только публикация и управление)
+	 */
+	public function getPublishKeyboard() {
+		return [
+			'one_time' => false,
+			'buttons' => [
+				[
+					[
+						'action' => ['type' => 'text', 'label' => 'Опубликовать'],
+						'color'  => 'positive'
+					],
+					[
+						'action' => ['type' => 'text', 'label' => 'Посмотреть'],
+						'color'  => 'default'
+					]
+				],
+				[
+					[
+						'action' => ['type' => 'text', 'label' => 'Добавить фото'],
+						'color'  => 'primary'
+					]
+				],
+				[
+					[
+						'action' => ['type' => 'text', 'label' => 'Удалить объявление'],
+						'color'  => 'negative'
+					]
+				]
+			]
+		];
+	}
+	
 
     /**
      * Получение клавиатуры оплаты
