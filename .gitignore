@@ -1,6 +1,35 @@
+# Конфигурационные файлы с секретами
 config.php
-# Игнорировать все файлы с расширением .md
-*.md
+.env
+.env.local
 
-# Но не игнорировать README.md
+# Логи и временные файлы
+logs/
+*.log
+tmp/
+temp/
+
+# Системные файлы ОС и редакторов
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Зависимости (если будет Composer)
+/vendor/
+composer.phar
+
+# Архивы и дампы
+*.sql.gz
+*.tar.gz
+*.zip
+dump.sql
+
+# Исключения: документация, задачи и системные инструкции ОБЯЗАТЕЛЬНО версионируются
 !README.md
+!AGENTS.md
+!docs/**
+!tasks/**
