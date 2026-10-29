@@ -282,7 +282,7 @@ class VKHelper {
      */
     public function getPaymentKeyboard($paymentUrl, $adId) {
         return [
-            'one_time' => false,
+            'one_time' => true,
             'buttons' => [
                 [
                     [

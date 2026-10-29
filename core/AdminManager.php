@@ -76,9 +76,10 @@ class AdminManager {
         ];
 
         $vkHelper->sendMessage($this->adminUserId, "Выберите действие:", [
-            'keyboard' => ['one_time' => false, 'buttons' => $buttons]
+            'keyboard' => ['one_time' => true, 'buttons' => $buttons]
         ]);
     }
+	
 
     public function publishToWall($adId, $vkHelper, $groupId) {
         error_log("[AdminManager] publishToWall: adId={$adId}, groupId={$groupId}");
